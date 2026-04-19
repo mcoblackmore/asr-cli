@@ -119,6 +119,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional hotwords or context string passed to the backend when supported",
     )
     transcribe_parser.add_argument(
+        "--prompt",
+        default=None,
+        help="Optional backend prompt or instruction string when supported",
+    )
+    transcribe_parser.add_argument(
+        "--spelling-prompt",
+        default=None,
+        help="Optional spelling guidance for easily-mistaken words or names",
+    )
+    transcribe_parser.add_argument(
         "--chunk-duration",
         type=float,
         default=None,
@@ -227,6 +237,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--context",
         default=None,
         help="Optional hotwords or context string passed to the transcription backend",
+    )
+    all_parser.add_argument(
+        "--prompt",
+        default=None,
+        help="Optional backend prompt or instruction string when supported",
+    )
+    all_parser.add_argument(
+        "--spelling-prompt",
+        default=None,
+        help="Optional spelling guidance for easily-mistaken words or names",
     )
     all_parser.add_argument(
         "--chunk-duration",
@@ -367,6 +387,54 @@ def print_run_config(title: str, items: list[tuple[str, Any]]) -> None:
     print(file=sys.stderr)
 
 
+def join_prompt_parts(*parts: str | None) -> str | None:
+    cleaned = [part.strip() for part in parts if part and part.strip()]
+    if not cleaned:
+        return None
+    return "\n\n".join(cleaned)
+
+
+def build_spelling_guidance(spelling_prompt: str | None) -> str | None:
+    if spelling_prompt is None or not spelling_prompt.strip():
+        return None
+    return (
+        "Use these spelling hints when transcribing names, brands, proper nouns, "
+        "and other easily mistaken words:\n"
+        f"{spelling_prompt.strip()}"
+    )
+
+
+def build_official_whisper_prompt(args: argparse.Namespace) -> str | None:
+    return join_prompt_parts(
+        args.context,
+        args.prompt,
+        build_spelling_guidance(getattr(args, "spelling_prompt", None)),
+    )
+
+
+def build_mlx_prompt_kwargs(
+    resolved_model: str,
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    lowered = resolved_model.lower()
+    spelling_guidance = build_spelling_guidance(getattr(args, "spelling_prompt", None))
+    combined_instruction = join_prompt_parts(args.context, args.prompt, spelling_guidance)
+
+    if "qwen3-asr" in lowered:
+        return {"system_prompt": combined_instruction} if combined_instruction else {}
+    if "glm-asr" in lowered:
+        return {"prompt": combined_instruction} if combined_instruction else {}
+
+    kwargs: dict[str, Any] = {}
+    if args.context is not None:
+        kwargs["context"] = args.context
+    if args.prompt is not None:
+        kwargs["prompt"] = args.prompt
+    if spelling_guidance is not None:
+        kwargs["prompt"] = join_prompt_parts(kwargs.get("prompt"), spelling_guidance)
+    return kwargs
+
+
 def load_backend():
     from mlx_audio.stt.generate import generate_transcription
     from mlx_audio.stt.utils import load_model
@@ -419,8 +487,9 @@ def transcribe_with_official_whisper(
     }
     if args.language is not None:
         transcribe_kwargs["language"] = args.language
-    if args.context is not None:
-        transcribe_kwargs["initial_prompt"] = args.context
+    initial_prompt = build_official_whisper_prompt(args)
+    if initial_prompt is not None:
+        transcribe_kwargs["initial_prompt"] = initial_prompt
     raw_result = model.transcribe(audio_path, **transcribe_kwargs)
     return SimpleNamespace(
         text=str(raw_result.get("text", "")).strip(),
@@ -1237,8 +1306,6 @@ def transcribe_files(args: argparse.Namespace) -> list[Path]:
     }
     if args.language is not None:
         base_kwargs["language"] = args.language
-    if args.context is not None:
-        base_kwargs["context"] = args.context
     if args.chunk_duration is not None:
         base_kwargs["chunk_duration"] = args.chunk_duration
     if args.frame_threshold is not None:
@@ -1248,6 +1315,7 @@ def transcribe_files(args: argparse.Namespace) -> list[Path]:
     if args.stream:
         base_kwargs["stream"] = True
     base_kwargs.update(parse_gen_kwargs(args.gen_kwargs))
+    base_kwargs.update(build_mlx_prompt_kwargs(resolved_model, args))
 
     multiple_inputs = len(args.audio) > 1
     written_paths: list[Path] = []
@@ -1282,6 +1350,8 @@ def transcribe_files(args: argparse.Namespace) -> list[Path]:
                     ("format", args.format),
                     ("language", args.language),
                     ("context", args.context),
+                    ("prompt", args.prompt),
+                    ("spelling_prompt", getattr(args, "spelling_prompt", None)),
                     ("chunk_duration", args.chunk_duration),
                     ("frame_threshold", args.frame_threshold),
                     ("max_tokens", args.max_tokens),
@@ -1355,6 +1425,8 @@ def run_all(args: argparse.Namespace) -> int:
         format="srt",
         language=args.language,
         context=args.context,
+        prompt=args.prompt,
+        spelling_prompt=args.spelling_prompt,
         chunk_duration=args.chunk_duration,
         frame_threshold=args.frame_threshold,
         max_tokens=args.max_tokens,

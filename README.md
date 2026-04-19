@@ -15,6 +15,35 @@ Built-in shorthand aliases:
 - `qwen` -> `mlx-community/Qwen3-ASR-0.6B-4bit`
 - `glm` -> `mlx-community/GLM-ASR-Nano-2512-4bit`
 
+## Runtime Dependencies
+
+Core runtime dependencies from `pyproject.toml`:
+- `openai-whisper>=20250625`
+- `mlx-audio>=0.4.2`
+
+System / environment dependencies:
+- Python `>= 3.12`
+- `ffmpeg` for common audio/video container decoding such as `.mp4`, `.mov`, `.mkv`
+- `opencli` with a working Gemini web session for `rectify` and `all`
+
+Backend usage in this repo:
+- official OpenAI Whisper models use the official `openai-whisper` Python package
+- Qwen3-ASR, GLM-ASR, and the forced aligner run through `mlx-audio`
+
+## Referenced Core Projects
+
+This project is built on top of, or directly references, these upstream GitHub projects:
+- OpenAI Whisper: [openai/whisper](https://github.com/openai/whisper)
+- MLX-Audio: [Blaizzy/mlx-audio](https://github.com/Blaizzy/mlx-audio)
+- OpenCLI: [opencli-io/opencli](https://github.com/opencli-io/opencli)
+- MLX: [ml-explore/mlx](https://github.com/ml-explore/mlx)
+
+Model repos commonly used with this CLI:
+- Whisper Turbo model repo: [openai/whisper-large-v3-turbo](https://huggingface.co/openai/whisper-large-v3-turbo)
+- Qwen3-ASR MLX repo: [mlx-community/Qwen3-ASR-0.6B-4bit](https://huggingface.co/mlx-community/Qwen3-ASR-0.6B-4bit)
+- GLM-ASR Nano MLX repo: [mlx-community/GLM-ASR-Nano-2512-4bit](https://huggingface.co/mlx-community/GLM-ASR-Nano-2512-4bit)
+- Qwen3 Forced Aligner MLX repo: [mlx-community/Qwen3-ForcedAligner-0.6B-8bit](https://huggingface.co/mlx-community/Qwen3-ForcedAligner-0.6B-8bit)
+
 ## Quickstart
 
 ### Install
