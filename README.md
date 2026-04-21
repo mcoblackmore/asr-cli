@@ -9,6 +9,13 @@ CLI for local ASR on Windows, using Faster-Whisper for transcription.
 - SRT subtitle with configurable max characters per line
 - Support for multiple Whisper model sizes: tiny, base, small, medium, large
 - Chinese language support with auto-detection
+- **Translate Chinese subtitles to English** (via Gemini, powered by opencli)
+
+## Technology
+
+- **Faster-Whisper** - CPU-optimized Whisper implementation for transcription
+- **opencli + Gemini** - Translation from Chinese to English
+- **av** - Audio/video decoding using FFmpeg
 
 ## Model Sizes
 
@@ -24,6 +31,7 @@ CLI for local ASR on Windows, using Faster-Whisper for transcription.
 - Python >= 3.12
 - faster-whisper
 - av (for audio/video decoding)
+- opencli (for translation feature only) - https://www.npmjs.com/package/@jackwener/opencli
 
 ## Installation
 
@@ -76,6 +84,16 @@ asr-cli transcribe audio.mp3 --format vtt
 asr-cli transcribe audio.mp3 --format srt --output C:\output\subtitles.srt
 ```
 
+### Translate Chinese subtitles to English
+
+Uses Gemini via opencli to translate Chinese subtitles to English:
+
+```cmd
+asr-cli transcribe video.mp4 --format srt --translate --output english.srt
+```
+
+This outputs English subtitles directly, useful for video creators needing bilingual captions.
+
 ## Model Download
 
 Models are downloaded automatically on first use. If you have a Hugging Face account with an access token, you can use it to speed up downloads:
@@ -108,6 +126,12 @@ asr-cli transcribe audio.mp3 --format srt --model tiny
 - Use `--model tiny` for faster results with lower accuracy
 - Close other applications to free up RAM
 - Consider using small model for better accuracy/speed balance
+
+### Translation fails
+
+- Make sure opencli is installed: `npm install -g @jackwener/opencli`
+- Ensure Chrome is logged into Gemini before running translation
+- Translation uses your Gemini account via opencli
 
 ## License
 
