@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -57,6 +58,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--verbose",
         action="store_true",
         help="Show detailed progress info",
+    )
+    transcribe_parser.add_argument(
+        "--translate",
+        action="store_true",
+        help="Translate transcript to English (via Gemini, requires opencli and VPN)",
+    )
+    transcribe_parser.add_argument(
+        "--translate-api-key",
+        default=None,
+        help="Not used anymore (kept for compatibility)",
     )
     return parser
 
@@ -189,6 +200,68 @@ def render_vtt(cues: list[dict[str, str]]) -> str:
     return "\n\n".join(blocks) + "\n"
 
 
+def translate_cues_via_cli(cues: list[dict[str, str]], verbose: bool = False) -> list[dict[str, str]]:
+    import subprocess
+    import json as _json
+
+    OPENCLI_CMD = "e:\\nvm4w\\nodejs\\opencli.cmd"
+    BATCH_SIZE = 10
+
+    translated_cues = []
+    total = len(cues)
+
+    for batch_start in range(0, total, BATCH_SIZE):
+        batch_end = min(batch_start + BATCH_SIZE, total)
+        if verbose:
+            print(f"  Translating cues {batch_start + 1}-{batch_end} of {total}...", file=sys.stderr)
+
+        batch = cues[batch_start:batch_end]
+        chinese_text = "\n".join(f"[{i + 1}] {cue['text']}" for i, cue in enumerate(batch))
+        prompt = "翻译成英文，只输出编号和翻译，格式为[编号] 英文，不要其他内容：\n" + chinese_text
+
+        cmd = f'{OPENCLI_CMD} gemini ask {json.dumps(prompt)} -f json'
+        result = subprocess.run(
+            cmd,
+            shell=True, capture_output=True, text=True, encoding="utf-8", timeout=180
+        )
+
+        try:
+            response = _json.loads(result.stdout)
+            translated_text = response[0]["response"]
+            if translated_text.startswith("💬 "):
+                translated_text = translated_text[2:]
+
+            import re
+            parts = re.split(r'(?=\[\d+\])', translated_text.strip())
+            parts = [p.strip() for p in parts if p.strip()]
+
+            for i, cue in enumerate(batch):
+                if i < len(parts):
+                    text_en = parts[i]
+                    if "]" in text_en:
+                        text_en = text_en.split("]", 1)[-1].strip()
+                else:
+                    text_en = cue["text"]
+                translated_cues.append({
+                    "index": str(len(translated_cues) + 1),
+                    "start": cue["start"],
+                    "end": cue["end"],
+                    "text": text_en,
+                })
+        except Exception as e:
+            if verbose:
+                print(f"  Batch failed: {e}, keeping original", file=sys.stderr)
+            for cue in batch:
+                translated_cues.append({
+                    "index": str(len(translated_cues) + 1),
+                    "start": cue["start"],
+                    "end": cue["end"],
+                    "text": cue["text"],
+                })
+
+    return translated_cues
+
+
 def transcribe_file(args: argparse.Namespace) -> int:
     from faster_whisper import WhisperModel
 
@@ -227,6 +300,10 @@ def transcribe_file(args: argparse.Namespace) -> int:
 
     if args.format == "txt":
         text = " ".join(seg.text.strip() for seg in seg_list)
+        if args.translate:
+            if args.verbose:
+                print("Translating text...", file=sys.stderr)
+            text = translate_cues_via_cli([{"index": "1", "start": "0", "end": "0", "text": text}], args.verbose)[0]["text"]
         output_text = f"{text}\n"
     elif args.format == "json":
         output_data = {
@@ -241,6 +318,13 @@ def transcribe_file(args: argparse.Namespace) -> int:
                 for seg in seg_list
             ],
         }
+        if args.translate:
+            if args.verbose:
+                print(f"Translating {len(seg_list)} segments...", file=sys.stderr)
+            seg_dicts = [{"start": "0", "end": "0", "text": seg.text} for seg in seg_list]
+            translated = translate_cues_via_cli(seg_dicts, args.verbose)
+            for i, seg in enumerate(output_data["segments"]):
+                seg["text_en"] = translated[i]["text"]
         output_text = json.dumps(output_data, ensure_ascii=False, indent=2) + "\n"
     elif args.format in {"srt", "vtt"}:
         seg_dicts = []
@@ -251,6 +335,10 @@ def transcribe_file(args: argparse.Namespace) -> int:
                 "text": seg.text,
             })
         cues = build_srt_cues(seg_dicts, args.max_chars_per_line)
+        if args.translate:
+            if args.verbose:
+                print(f"Translating {len(cues)} cues to English...", file=sys.stderr)
+            cues = translate_cues_via_cli(cues, args.verbose)
         if args.format == "srt":
             output_text = render_srt(cues)
         else:
