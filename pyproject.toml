@@ -3,11 +3,11 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "asr-cli"
+name = "asr-cli-win"
 version = "0.1.0"
-description = "MLX ASR CLI wrapper for Qwen3-ASR and GLM-ASR on macOS"
+description = "ASR CLI for Windows using Faster-Whisper"
 requires-python = ">=3.12"
-dependencies = ["mlx-audio>=0.4.2", "openai-whisper>=20250625"]
+dependencies = ["faster-whisper>=1.0.0", "av>=10.0.0"]
 
 [project.scripts]
 asr-cli = "asr_cli.cli:main"
